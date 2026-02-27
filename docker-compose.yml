@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: tracedonate_db
+    environment:
+      POSTGRES_USER: tracedonate
+      POSTGRES_PASSWORD: tracedonate_secure_pass
+      POSTGRES_DB: tracedonate
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracedonate"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tracedonate_network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tracedonate_api
+    environment:
+      DATABASE_URL: postgresql://tracedonate:tracedonate_secure_pass@postgres:5432/tracedonate
+      JWT_SECRET_KEY: your-secret-key-change-in-production
+      DEBUG: "False"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    networks:
+      - tracedonate_network
+    command: python main.py
+
+volumes:
+  postgres_data:
+
+networks:
+  tracedonate_network:
+    driver: bridge
