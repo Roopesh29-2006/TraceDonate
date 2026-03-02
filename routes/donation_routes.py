@@ -1,170 +1,203 @@
 """
-Donation routes - donation management and tracking endpoints.
+Donation routes - FINAL stable JSON-body version
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
+import uuid
 
 from database import get_db
-from models.user import User
+from auth.auth_dependencies import require_role
+from services.distance_service import calculate_distance
 from models.donation import Donation, DonationStatus
 from models.victim_request import VictimRequest, RequestStatus
-from models.proof_story import ProofStory
-from schemas.donation_schema import DonationCreate, DonationResponse, DonationTrack
-from auth.auth_dependencies import get_current_user
-from services.trace_token_generator import generate_trace_token
+from models.user import User
 
 router = APIRouter()
 
 
-@router.post("/create", response_model=DonationResponse, status_code=status.HTTP_201_CREATED)
-def create_donation(
-    donation_data: DonationCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+# ======================================================
+# 🔹 REQUEST MODELS (IMPORTANT FOR 422 FIX)
+# ======================================================
+
+class CreateOrderRequest(BaseModel):
+    request_id: int
+    amount: float
+
+
+class ConfirmPaymentRequest(BaseModel):
+    donation_id: int
+
+
+# ======================================================
+# 🔹 GET APPROVED REQUESTS FOR DONORS
+# ======================================================
+
+@router.get("/available-requests")
+def available_requests(
+    donor_lat: float,
+    donor_lon: float,
+    db: Session = Depends(get_db)
 ):
-    """
-    Create a new donation.
 
-    Args:
-        donation_data: Donation creation data
-        db: Database session
-        current_user: Current authenticated donor
+    requests = db.query(VictimRequest).filter(
+        VictimRequest.status == RequestStatus.APPROVED
+    ).all()
 
-    Returns:
-        Created donation record
+    result = []
 
-    Raises:
-        HTTPException: If request not found or not approved
-    """
-    # Verify request exists and is approved
+    for r in requests:
+        if r.latitude and r.longitude:
+            distance = calculate_distance(
+                donor_lat,
+                donor_lon,
+                r.latitude,
+                r.longitude
+            )
+        else:
+            distance = 9999  # push to end if no location
+
+        result.append({
+            "id": r.id,
+            "title": r.title,
+            "description": r.description,
+            "required_amount": float(r.required_amount),
+            "collected_amount": float(r.collected_amount),
+            "priority_score": r.priority_score,
+            "category": r.category,
+            "latitude": r.latitude,
+            "longitude": r.longitude,
+            "distance_km": round(distance, 2)
+        })
+
+    # Sort by nearest first
+    result.sort(key=lambda x: x["distance_km"])
+
+    return {"requests": result}
+
+
+# ======================================================
+# 🔹 CREATE DONATION ORDER (JSON BODY)
+# ======================================================
+
+@router.post("/create-order")
+def create_order(
+    payload: CreateOrderRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["DONOR"]))
+):
+
+    request_id = payload.request_id
+    amount = payload.amount
+
     request = db.query(VictimRequest).filter(
-        VictimRequest.id == donation_data.request_id
+        VictimRequest.id == request_id,
+        VictimRequest.status == RequestStatus.APPROVED
     ).first()
 
     if not request:
+        raise HTTPException(status_code=404, detail="Request not available")
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Invalid amount")
+
+    remaining = float(request.required_amount) - float(request.collected_amount)
+
+    if amount > remaining:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Victim request not found"
+            status_code=400,
+            detail=f"Only ₹{remaining} remaining"
         )
 
-    if request.status != RequestStatus.APPROVED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Can only donate to approved requests"
-        )
-
-    # Generate unique trace token
-    trace_token = generate_trace_token()
-
-    # Create donation
     donation = Donation(
         donor_id=current_user.id,
-        request_id=donation_data.request_id,
-        amount=donation_data.amount,
-        trace_token=trace_token,
-        payment_id=donation_data.payment_id,
-        status=DonationStatus.COMPLETED
+        request_id=request_id,
+        amount=amount,
+        status=DonationStatus.PENDING
     )
-
-    # Update collected amount
-    request.collected_amount += donation_data.amount
-
-    # Mark request as completed if target reached
-    if request.collected_amount >= request.required_amount:
-        request.status = RequestStatus.COMPLETED
 
     db.add(donation)
     db.commit()
     db.refresh(donation)
+    return {
+    "donation_id": donation.id,
+    "payment_session_id": str(uuid.uuid4()),
+    "amount": payload.amount
+}
 
-    return donation
+# ======================================================
+# 🔹 CONFIRM DONATION PAYMENT (JSON BODY)
+# ======================================================
 
-
-@router.get("/track/{trace_token}", response_model=DonationTrack)
-def track_donation(
-    trace_token: str,
-    db: Session = Depends(get_db)
+@router.post("/confirm-payment")
+def confirm_payment(
+    payload: ConfirmPaymentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["DONOR"]))
 ):
-    """
-    Track donation by trace token.
 
-    Args:
-        trace_token: Unique trace token of the donation
-        db: Database session
+    donation_id = payload.donation_id
 
-    Returns:
-        Donation tracking information with proof stories
-
-    Raises:
-        HTTPException: If donation not found
-    """
-    # Find donation
     donation = db.query(Donation).filter(
-        Donation.trace_token == trace_token
+        Donation.id == donation_id,
+        Donation.donor_id == current_user.id
     ).first()
 
     if not donation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Donation not found"
-        )
+        raise HTTPException(status_code=404, detail="Donation not found")
 
-    # Get related data
-    donor = donation.donor
-    request = donation.request
-    proof_stories = db.query(ProofStory).filter(
-        ProofStory.request_id == request.id
-    ).all()
+    if donation.status != DonationStatus.PENDING:
+        raise HTTPException(status_code=400, detail="Invalid donation state")
 
-    # Format proof stories
-    proof_stories_data = [
-        {
-            "description": story.description,
-            "media_url": story.media_url,
-            "created_at": story.created_at
-        }
-        for story in proof_stories
-    ]
+    request = db.query(VictimRequest).filter(
+        VictimRequest.id == donation.request_id
+    ).first()
+
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    donation.status = DonationStatus.COMPLETED
+    donation.trace_token = str(uuid.uuid4())
+
+    request.collected_amount = float(request.collected_amount) + float(donation.amount)
+
+    if request.collected_amount >= request.required_amount:
+        request.status = RequestStatus.COMPLETED
+
+    db.commit()
 
     return {
-        "trace_token": donation.trace_token,
-        "donor_name": donor.name,
-        "request_title": request.title,
-        "amount": donation.amount,
-        "status": donation.status,
-        "created_at": donation.created_at,
-        "proof_stories": proof_stories_data
+        "message": "Payment confirmed",
+        "trace_token": donation.trace_token
     }
 
 
-@router.get("/my-donations", response_model=dict)
-def get_my_donations(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    skip: int = 0,
-    limit: int = 10
-):
-    """
-    Get all donations made by current user.
+# ======================================================
+# 🔹 DONATION PROGRESS
+# ======================================================
 
-    Args:
-        db: Database session
-        current_user: Current authenticated user
-        skip: Number of records to skip
-        limit: Maximum number of records to return
+@router.get("/progress/{request_id}")
+def donation_progress(request_id: int, db: Session = Depends(get_db)):
 
-    Returns:
-        List of user's donations
-    """
-    donations = db.query(Donation).filter(
-        Donation.donor_id == current_user.id
-    ).order_by(Donation.created_at.desc()).offset(skip).limit(limit).all()
+    request = db.query(VictimRequest).filter(
+        VictimRequest.id == request_id
+    ).first()
 
-    total = db.query(Donation).filter(
-        Donation.donor_id == current_user.id
-    ).count()
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    percentage = 0
+    if request.required_amount > 0:
+        percentage = (
+            float(request.collected_amount)
+            / float(request.required_amount)
+        ) * 100
 
     return {
-        "total": total,
-        "donations": donations
+        "required_amount": float(request.required_amount),
+        "collected_amount": float(request.collected_amount),
+        "remaining_amount": float(request.required_amount) - float(request.collected_amount),
+        "percentage_funded": round(percentage, 2),
+        "status": request.status.value if hasattr(request.status, "value") else request.status
     }

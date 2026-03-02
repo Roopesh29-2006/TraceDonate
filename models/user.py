@@ -32,6 +32,7 @@ class User(Base):
     # Relationships
     victim_requests = relationship("VictimRequest", back_populates="victim", foreign_keys="VictimRequest.victim_id")
     donations = relationship("Donation", back_populates="donor", foreign_keys="Donation.donor_id")
+    proof_stories = relationship("ProofStory", back_populates="uploader")
 
     def __repr__(self):
         return f"<User(id={self.id}, email='{self.email}', role='{self.role}')>"

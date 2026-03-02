@@ -1,224 +1,174 @@
-"""
-Admin routes - admin management endpoints.
-"""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-
 from database import get_db
-from models.user import User
+from auth.auth_dependencies import require_role
 from models.victim_request import VictimRequest, RequestStatus
-from schemas.victim_request_schema import VictimRequestResponse, VictimRequestListResponse
-from auth.auth_dependencies import get_current_user, require_role
+from models.user import User
 
 router = APIRouter()
 
 
-@router.get("/requests", response_model=VictimRequestListResponse)
+# ======================================================
+# 🔹 GET ALL PENDING REQUESTS
+# ======================================================
+@router.get("/pending-requests")
+def get_pending_requests(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["ADMIN"]))
+):
+
+    requests = db.query(VictimRequest).filter(
+        VictimRequest.status == RequestStatus.PENDING
+    ).all()
+
+    return [
+        {
+            "id": r.id,
+            "title": r.title,
+            "description": r.description,
+            "required_amount": float(r.required_amount),
+            "collected_amount": float(r.collected_amount),
+            "status": r.status.value if hasattr(r.status, "value") else r.status,
+        }
+        for r in requests
+    ]
+@router.get("/all-requests")
 def get_all_requests(
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["ADMIN"])),
-    status_filter: str = None,
-    skip: int = 0,
-    limit: int = 20
+    current_user: User = Depends(require_role(["ADMIN"]))
 ):
-    """
-    Get all victim requests (admin only).
-
-    Args:
-        db: Database session
-        current_user: Current authenticated admin
-        status_filter: Filter by status (PENDING, APPROVED, REJECTED, COMPLETED)
-        skip: Number of records to skip
-        limit: Maximum number of records to return
-
-    Returns:
-        List of all victim requests
-    """
-    query = db.query(VictimRequest)
-
-    # Apply status filter if provided
-    if status_filter:
-        valid_statuses = [status.value for status in RequestStatus]
-        if status_filter not in valid_statuses:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
-            )
-        query = query.filter(VictimRequest.status == status_filter)
-
-    # Order by pinned first, then by urgency, then by created_at
-    requests = query.order_by(
-        VictimRequest.is_pinned.desc(),
-        VictimRequest.created_at.desc()
-    ).offset(skip).limit(limit).all()
-
-    total = db.query(VictimRequest)
-    if status_filter:
-        total = total.filter(VictimRequest.status == status_filter)
-    total = total.count()
+    requests = db.query(VictimRequest).all()
 
     return {
-        "total": total,
         "requests": requests
     }
 
 
-@router.post("/approve/{request_id}", response_model=VictimRequestResponse)
+# ======================================================
+# 🔹 APPROVE REQUEST
+# ======================================================
+@router.put("/approve/{request_id}")
 def approve_request(
     request_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["ADMIN"]))
 ):
-    """
-    Approve a victim request (admin only).
 
-    Args:
-        request_id: ID of the request to approve
-        db: Database session
-        current_user: Current authenticated admin
-
-    Returns:
-        Approved victim request
-
-    Raises:
-        HTTPException: If request not found or already processed
-    """
     request = db.query(VictimRequest).filter(
         VictimRequest.id == request_id
     ).first()
 
     if not request:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Request not found"
-        )
-
-    if request.status != RequestStatus.PENDING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Request is already {request.status}"
-        )
+        raise HTTPException(status_code=404, detail="Request not found")
 
     request.status = RequestStatus.APPROVED
     db.commit()
-    db.refresh(request)
 
-    return request
+    return {"message": "Request approved"}
 
 
-@router.post("/reject/{request_id}", response_model=VictimRequestResponse)
+# ======================================================
+# 🔹 REJECT REQUEST
+# ======================================================
+@router.put("/reject/{request_id}")
 def reject_request(
     request_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["ADMIN"]))
 ):
-    """
-    Reject a victim request (admin only).
 
-    Args:
-        request_id: ID of the request to reject
-        db: Database session
-        current_user: Current authenticated admin
-
-    Returns:
-        Rejected victim request
-
-    Raises:
-        HTTPException: If request not found or already processed
-    """
     request = db.query(VictimRequest).filter(
         VictimRequest.id == request_id
     ).first()
 
     if not request:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Request not found"
-        )
-
-    if request.status != RequestStatus.PENDING:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Request is already {request.status}"
-        )
+        raise HTTPException(status_code=404, detail="Request not found")
 
     request.status = RequestStatus.REJECTED
     db.commit()
-    db.refresh(request)
 
-    return request
+    return {"message": "Request rejected"}
 
-
-@router.post("/pin/{request_id}", response_model=VictimRequestResponse)
-def pin_request(
+@router.put("/verify-request/{request_id}")
+def verify_request(
     request_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["ADMIN"]))
 ):
-    """
-    Pin a victim request (admin only).
-    Pinned requests appear at the top of the list.
-
-    Args:
-        request_id: ID of the request to pin
-        db: Database session
-        current_user: Current authenticated admin
-
-    Returns:
-        Pinned victim request
-
-    Raises:
-        HTTPException: If request not found
-    """
     request = db.query(VictimRequest).filter(
         VictimRequest.id == request_id
     ).first()
 
     if not request:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Request not found"
-        )
+        raise HTTPException(status_code=404, detail="Request not found")
 
-    request.is_pinned = True
+    request.is_verified_by_admin = True
+    request.status = RequestStatus.APPROVED
+
     db.commit()
-    db.refresh(request)
 
-    return request
+    return {"message": "Request verified and approved"}
+# ======================================================
+# 🔹 GET ALL PENDING REQUESTS (ADMIN)
+# ======================================================
 
-
-@router.post("/unpin/{request_id}", response_model=VictimRequestResponse)
-def unpin_request(
-    request_id: int,
+@router.get("/pending-requests")
+def get_pending_requests(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["ADMIN"]))
 ):
-    """
-    Unpin a victim request (admin only).
+    requests = db.query(VictimRequest).filter(
+        VictimRequest.status == RequestStatus.PENDING
+    ).all()
 
-    Args:
-        request_id: ID of the request to unpin
-        db: Database session
-        current_user: Current authenticated admin
+    return [
+        {
+            "id": r.id,
+            "title": r.title,
+            "description": r.description,
+            "required_amount": r.required_amount,
+            "priority_score": r.priority_score,
+            "location_name": r.location_name,
 
-    Returns:
-        Unpinned victim request
+            # Authority details
+            "authority_name": r.authority_name,
+            "authority_contact": r.authority_contact,
+            "authority_organization": r.authority_organization,
+            "authority_proof_url": r.authority_proof_url,
 
-    Raises:
-        HTTPException: If request not found
-    """
-    request = db.query(VictimRequest).filter(
-        VictimRequest.id == request_id
-    ).first()
+            "created_at": r.created_at
+        }
+        for r in requests
+    ]
+# ======================================================
+# 🔹 GET ALL PENDING REQUESTS (ADMIN)
+# ======================================================
 
-    if not request:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Request not found"
-        )
+@router.get("/pending-requests")
+def get_pending_requests(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role(["ADMIN"]))
+):
+    requests = db.query(VictimRequest).filter(
+        VictimRequest.status == RequestStatus.PENDING
+    ).all()
 
-    request.is_pinned = False
-    db.commit()
-    db.refresh(request)
+    return [
+        {
+            "id": r.id,
+            "title": r.title,
+            "description": r.description,
+            "required_amount": r.required_amount,
+            "priority_score": r.priority_score,
+            "location_name": r.location_name,
 
-    return request
+            # Authority details
+            "authority_name": r.authority_name,
+            "authority_contact": r.authority_contact,
+            "authority_organization": r.authority_organization,
+            "authority_proof_url": r.authority_proof_url,
+
+            "created_at": r.created_at
+        }
+        for r in requests
+    ]

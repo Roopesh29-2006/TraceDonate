@@ -1,0 +1,7 @@
+tracedonate-app/
+node_modules/
+.expo/
+.git/
+.env
+*.pyc
+__pycache__/
