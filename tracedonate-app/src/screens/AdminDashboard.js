@@ -12,11 +12,15 @@ import {
   Dimensions,
 } from "react-native";
 import { BlurView } from "expo-blur";
+import { Ionicons } from "@expo/vector-icons";
 import API from "../api/api";
+import { AuthContext } from "../context/AuthContext";
+import { useContext } from "react";
 
 const { width } = Dimensions.get("window");
 
 export default function AdminDashboard() {
+  const { logout } = useContext(AuthContext);
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("PENDING");
@@ -49,6 +53,17 @@ export default function AdminDashboard() {
     } catch (error) {
       Alert.alert("Error", "Action failed");
     }
+  };
+
+  const handleLogout = () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to logout?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Logout", onPress: logout, style: "destructive" }
+      ]
+    );
   };
 
   const filteredRequests = requests.filter(
@@ -170,11 +185,15 @@ export default function AdminDashboard() {
   return (
     <View style={styles.container}>
       {/* HEADER */}
-      <BlurView intensity={80} style={styles.header}>
+      <View style={[styles.header, { backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#eee', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
+        <View style={{ width: 40 }} />
         <Text style={styles.headerTitle}>
           Admin Control Center
         </Text>
-      </BlurView>
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
+          <Ionicons name="log-out-outline" size={24} color="#FF3B30" />
+        </TouchableOpacity>
+      </View>
 
       {/* FILTER TABS */}
       <View style={styles.tabs}>
@@ -339,5 +358,8 @@ const styles = StyleSheet.create({
   badgeText: {
     color: "#fff",
     fontWeight: "700",
+  },
+  logoutBtn: {
+    padding: 10,
   },
 });

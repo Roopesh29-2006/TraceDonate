@@ -69,6 +69,7 @@ from routes.auth_routes import router as auth_router
 from routes.victim_routes import router as victim_router
 from routes.admin_routes import router as admin_router
 from routes.donation_routes import router as donation_router
+from routes.payment_routes import router as payment_router
 
 API_PREFIX = settings.API_V1_PREFIX
 
@@ -76,6 +77,7 @@ app.include_router(auth_router, prefix=f"{API_PREFIX}/auth", tags=["Authenticati
 app.include_router(victim_router, prefix=f"{API_PREFIX}/victim", tags=["Victim"])
 app.include_router(admin_router, prefix=f"{API_PREFIX}/admin", tags=["Admin"])
 app.include_router(donation_router, prefix=f"{API_PREFIX}/donation", tags=["Donations"])
+app.include_router(payment_router, prefix=f"{API_PREFIX}/payments", tags=["Payments"])
 
 # ---------------------------------------------------
 # LOCAL RUN

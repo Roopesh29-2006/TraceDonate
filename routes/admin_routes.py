@@ -7,6 +7,23 @@ from models.user import User
 
 router = APIRouter()
 
+def serialize_request(r: VictimRequest) -> dict:
+    """Helper to safely serialize VictimRequest objects to JSON."""
+    return {
+        "id": getattr(r, 'id'),
+        "title": getattr(r, 'title'),
+        "description": getattr(r, 'description'),
+        "required_amount": float(getattr(r, 'required_amount', 0)),
+        "collected_amount": float(getattr(r, 'collected_amount', 0)),
+        "status": str(getattr(r, 'status', 'PENDING')),
+        "priority_score": getattr(r, 'priority_score', 0),
+        "location_name": getattr(r, 'location_name', ''),
+        "authority_name": getattr(r, 'authority_name', ''),
+        "authority_contact": getattr(r, 'authority_contact', ''),
+        "authority_organization": getattr(r, 'authority_organization', ''),
+        "authority_proof_url": getattr(r, 'authority_proof_url', ''),
+        "created_at": getattr(r, 'created_at').isoformat() if hasattr(getattr(r, 'created_at'), 'isoformat') else str(getattr(r, 'created_at'))
+    }
 
 # ======================================================
 # 🔹 GET ALL PENDING REQUESTS
@@ -16,159 +33,66 @@ def get_pending_requests(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["ADMIN"]))
 ):
+    # Using filter_by is more IDE-friendly than filter() with comparisons
+    requests = db.query(VictimRequest).filter_by(status=RequestStatus.PENDING).all()
+    v_requests: list[VictimRequest] = requests
+    return [serialize_request(r) for r in v_requests]
 
-    requests = db.query(VictimRequest).filter(
-        VictimRequest.status == RequestStatus.PENDING
-    ).all()
-
-    return [
-        {
-            "id": r.id,
-            "title": r.title,
-            "description": r.description,
-            "required_amount": float(r.required_amount),
-            "collected_amount": float(r.collected_amount),
-            "status": r.status.value if hasattr(r.status, "value") else r.status,
-        }
-        for r in requests
-    ]
+# ======================================================
+# 🔹 GET ALL REQUESTS
+# ======================================================
 @router.get("/all-requests")
 def get_all_requests(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["ADMIN"]))
 ):
     requests = db.query(VictimRequest).all()
-
+    v_requests: list[VictimRequest] = requests
     return {
-        "requests": requests
+        "requests": [serialize_request(r) for r in v_requests]
     }
 
-
 # ======================================================
-# 🔹 APPROVE REQUEST
+# 🔹 VERIFY REQUEST (APPROVE/REJECT)
 # ======================================================
-@router.put("/approve/{request_id}")
-def approve_request(
-    request_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["ADMIN"]))
-):
-
-    request = db.query(VictimRequest).filter(
-        VictimRequest.id == request_id
-    ).first()
-
-    if not request:
-        raise HTTPException(status_code=404, detail="Request not found")
-
-    request.status = RequestStatus.APPROVED
-    db.commit()
-
-    return {"message": "Request approved"}
-
-
-# ======================================================
-# 🔹 REJECT REQUEST
-# ======================================================
-@router.put("/reject/{request_id}")
-def reject_request(
-    request_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["ADMIN"]))
-):
-
-    request = db.query(VictimRequest).filter(
-        VictimRequest.id == request_id
-    ).first()
-
-    if not request:
-        raise HTTPException(status_code=404, detail="Request not found")
-
-    request.status = RequestStatus.REJECTED
-    db.commit()
-
-    return {"message": "Request rejected"}
-
 @router.put("/verify-request/{request_id}")
 def verify_request(
     request_id: int,
+    approve: bool,  # Taken from query param ?approve=true/false
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role(["ADMIN"]))
 ):
-    request = db.query(VictimRequest).filter(
-        VictimRequest.id == request_id
-    ).first()
-
+    request = db.query(VictimRequest).filter_by(id=request_id).first()
     if not request:
         raise HTTPException(status_code=404, detail="Request not found")
 
-    request.is_verified_by_admin = True
-    request.status = RequestStatus.APPROVED
+    v_req: VictimRequest = request
+    if approve:
+        setattr(v_req, 'is_verified_by_admin', True)
+        setattr(v_req, 'status', RequestStatus.APPROVED)
+        msg = "Request verified and approved"
+    else:
+        setattr(v_req, 'status', RequestStatus.REJECTED)
+        msg = "Request rejected"
 
     db.commit()
+    return {"message": msg}
 
-    return {"message": "Request verified and approved"}
-# ======================================================
-# 🔹 GET ALL PENDING REQUESTS (ADMIN)
-# ======================================================
+# Simple status update endpoints (for backward compatibility)
+@router.put("/approve/{request_id}")
+def approve_request(request_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_role(["ADMIN"]))):
+    request = db.query(VictimRequest).filter_by(id=request_id).first()
+    if not request: raise HTTPException(status_code=404, detail="Request not found")
+    v_req: VictimRequest = request
+    setattr(v_req, 'status', RequestStatus.APPROVED)
+    db.commit()
+    return {"message": "Request approved"}
 
-@router.get("/pending-requests")
-def get_pending_requests(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["ADMIN"]))
-):
-    requests = db.query(VictimRequest).filter(
-        VictimRequest.status == RequestStatus.PENDING
-    ).all()
-
-    return [
-        {
-            "id": r.id,
-            "title": r.title,
-            "description": r.description,
-            "required_amount": r.required_amount,
-            "priority_score": r.priority_score,
-            "location_name": r.location_name,
-
-            # Authority details
-            "authority_name": r.authority_name,
-            "authority_contact": r.authority_contact,
-            "authority_organization": r.authority_organization,
-            "authority_proof_url": r.authority_proof_url,
-
-            "created_at": r.created_at
-        }
-        for r in requests
-    ]
-# ======================================================
-# 🔹 GET ALL PENDING REQUESTS (ADMIN)
-# ======================================================
-
-@router.get("/pending-requests")
-def get_pending_requests(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role(["ADMIN"]))
-):
-    requests = db.query(VictimRequest).filter(
-        VictimRequest.status == RequestStatus.PENDING
-    ).all()
-
-    return [
-        {
-            "id": r.id,
-            "title": r.title,
-            "description": r.description,
-            "required_amount": r.required_amount,
-            "priority_score": r.priority_score,
-            "location_name": r.location_name,
-
-            # Authority details
-            "authority_name": r.authority_name,
-            "authority_contact": r.authority_contact,
-            "authority_organization": r.authority_organization,
-            "authority_proof_url": r.authority_proof_url,
-
-            "created_at": r.created_at
-        }
-        for r in requests
-    ]
+@router.put("/reject/{request_id}")
+def reject_request(request_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_role(["ADMIN"]))):
+    request = db.query(VictimRequest).filter_by(id=request_id).first()
+    if not request: raise HTTPException(status_code=404, detail="Request not found")
+    v_req: VictimRequest = request
+    setattr(v_req, 'status', RequestStatus.REJECTED)
+    db.commit()
+    return {"message": "Request rejected"}

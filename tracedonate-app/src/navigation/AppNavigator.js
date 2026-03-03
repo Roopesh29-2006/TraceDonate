@@ -40,26 +40,26 @@ export default function AppNavigator() {
     }
 
     if (user.role === "DONOR") {
-  return (
-    <>
-      <Stack.Screen
-        name="DonorTabs"
-        component={DonorTabNavigator}
-        options={{ headerShown: false }}
-      />
+      return (
+        <>
+          <Stack.Screen
+            name="DonorTabs"
+            component={DonorTabNavigator}
+            options={{ headerShown: false }}
+          />
 
-      <Stack.Screen
-        name="Donate"
-        component={DonateScreen}
-      />
+          <Stack.Screen
+            name="Donate"
+            component={DonateScreen}
+          />
 
-      <Stack.Screen
-        name="PaymentGateway"
-        component={PaymentGatewayScreen}
-      />
-    </>
-  );
-}
+          <Stack.Screen
+            name="PaymentGateway"
+            component={PaymentGatewayScreen}
+          />
+        </>
+      );
+    }
 
     if (user.role === "VICTIM") {
       return (
@@ -69,9 +69,9 @@ export default function AppNavigator() {
             component={VictimDashboard}
           />
           <Stack.Screen
-           name="SubmitCompletion"
+            name="SubmitCompletion"
             component={SubmitCompletionScreen}
-            />
+          />
           <Stack.Screen
             name="CreateRequest"
             component={CreateRequestScreen}

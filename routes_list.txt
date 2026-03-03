@@ -1,0 +1,30 @@
+Path: /api/openapi.json, Methods: {'HEAD', 'GET'}
+Path: /api/docs, Methods: {'HEAD', 'GET'}
+Path: /docs/oauth2-redirect, Methods: {'HEAD', 'GET'}
+Path: /api/redoc, Methods: {'HEAD', 'GET'}
+Path: /health, Methods: {'GET'}
+Path: /api/v1/auth/register, Methods: {'POST'}
+Path: /api/v1/auth/login, Methods: {'POST'}
+Path: /api/v1/auth/me, Methods: {'GET'}
+Path: /api/v1/victim/request, Methods: {'POST'}
+Path: /api/v1/victim/request, Methods: {'GET'}
+Path: /api/v1/victim/map, Methods: {'GET'}
+Path: /api/v1/victim/request/{request_id}, Methods: {'PUT'}
+Path: /api/v1/victim/my-requests, Methods: {'GET'}
+Path: /api/v1/victim/submit-completion/{request_id}, Methods: {'PUT'}
+Path: /api/v1/admin/pending-requests, Methods: {'GET'}
+Path: /api/v1/admin/all-requests, Methods: {'GET'}
+Path: /api/v1/admin/approve/{request_id}, Methods: {'PUT'}
+Path: /api/v1/admin/reject/{request_id}, Methods: {'PUT'}
+Path: /api/v1/admin/verify-request/{request_id}, Methods: {'PUT'}
+Path: /api/v1/admin/pending-requests, Methods: {'GET'}
+Path: /api/v1/admin/pending-requests, Methods: {'GET'}
+Path: /api/v1/donation/available-requests, Methods: {'GET'}
+Path: /api/v1/donation/create-order, Methods: {'POST'}
+Path: /api/v1/donation/confirm-payment, Methods: {'POST'}
+Path: /api/v1/donation/progress/{request_id}, Methods: {'GET'}
+Path: /api/v1/donation/stats, Methods: {'GET'}
+Path: /api/v1/payments/intent, Methods: {'POST'}
+Path: /api/v1/payments/confirm, Methods: {'POST'}
+Path: /api/v1/payments/receipt/{transaction_id}, Methods: {'GET'}
+Path: /api/v1/payments/trace/{token}, Methods: {'GET'}

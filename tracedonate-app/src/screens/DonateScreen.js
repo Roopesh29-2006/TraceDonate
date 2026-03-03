@@ -14,47 +14,17 @@ export default function DonateScreen({ route, navigation }) {
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleDonate = async () => {
+  const handleDonate = () => {
     if (!amount || parseFloat(amount) <= 0) {
       Alert.alert("Error", "Enter valid amount");
       return;
     }
 
-    try {
-      setLoading(true);
-
-      // 1️⃣ Create Order (PENDING donation)
-      const response = await API.post("/donation/create-order", {
-        request_id: requestId,
-        amount: Number(amount),
-      });
-
-      const donationId = response.data.donation_id;
-
-      if (!donationId) {
-        Alert.alert("Error", "Order creation failed");
-        setLoading(false);
-        return;
-      }
-
-      // 2️⃣ Navigate to Payment Gateway Screen
-      navigation.navigate("PaymentGateway", {
-        donationId: donationId,
-        amount: amount,
-      });
-
-      setLoading(false);
-
-    } catch (error) {
-      console.log("Create order error:", error.response?.data || error.message);
-
-      Alert.alert(
-        "Donation Failed",
-        error.response?.data?.detail || "Something went wrong"
-      );
-
-      setLoading(false);
-    }
+    // Navigate to Payment Gateway Screen to choose method
+    navigation.navigate("PaymentGateway", {
+      requestId: requestId,
+      amount: amount,
+    });
   };
 
   return (

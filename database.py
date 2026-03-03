@@ -12,7 +12,7 @@ settings = get_settings()
 engine = create_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
-    poolclass=NullPool,  # No connection pooling for simplicity in production, use QueuePool
+    poolclass=NullPool,
     future=True
 )
 
@@ -28,7 +28,9 @@ SessionLocal = sessionmaker(
 Base = declarative_base()
 
 
-def get_db() -> Session:
+from typing import Generator
+
+def get_db() -> Generator[Session, None, None]:
     """
     Dependency to get database session.
     Used in route handlers for dependency injection.

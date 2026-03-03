@@ -47,9 +47,9 @@ class VictimRequest(Base):
     priority_score = Column(Integer, default=0)
 
     # 📊 Status
-    status = Column(Enum(RequestStatus), default=RequestStatus.PENDING, nullable=False, index=True)
-    is_pinned = Column(Boolean, default=False)
-    is_verified_by_admin = Column(Boolean, default=False)
+    status: RequestStatus = Column(Enum(RequestStatus), default=RequestStatus.PENDING, nullable=False, index=True)
+    is_pinned: bool = Column(Boolean, default=False)
+    is_verified_by_admin: bool = Column(Boolean, default=False)
 
     # 🏥 Authority Verification
     authority_name = Column(String(255), nullable=False)

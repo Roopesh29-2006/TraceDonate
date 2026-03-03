@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useContext } from "react";
+import React, { useEffect, useState, useRef, useContext, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Alert,
 } from "react-native";
 import { BlurView } from "expo-blur";
+import { useFocusEffect } from "@react-navigation/native";
 import API from "../api/api";
 import { AuthContext } from "../context/AuthContext";
 
@@ -26,9 +27,13 @@ export default function VictimDashboard({ navigation }) {
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    fetchRequests();
+  useFocusEffect(
+    useCallback(() => {
+      fetchRequests();
+    }, [])
+  );
 
+  useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 600,
@@ -103,8 +108,8 @@ export default function VictimDashboard({ navigation }) {
               item.status === "APPROVED"
                 ? styles.approved
                 : item.status === "REJECTED"
-                ? styles.rejected
-                : styles.pending,
+                  ? styles.rejected
+                  : styles.pending,
             ]}
           >
             <Text style={styles.statusText}>
@@ -121,13 +126,20 @@ export default function VictimDashboard({ navigation }) {
           )}
         </View>
 
-        {/* Completion */}
-        {item.status === "COMPLETED" && (
+        {/* Completion / Submit Story */}
+        {item.status === "COMPLETED" ? (
           <View style={styles.completedBadge}>
-            <Text style={styles.completedText}>
-              Campaign Completed 🎉
-            </Text>
+            <Text style={styles.completedText}>Campaign Completed 🎉</Text>
           </View>
+        ) : (
+          item.collected_amount >= item.required_amount && item.status === "APPROVED" && (
+            <TouchableOpacity
+              style={styles.submitStoryButton}
+              onPress={() => navigation.navigate("SubmitCompletion", { id: item.id })}
+            >
+              <Text style={styles.submitStoryText}>Submit Impact Story ✍️</Text>
+            </TouchableOpacity>
+          )
         )}
       </Animated.View>
     );
@@ -295,7 +307,22 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "700",
   },
-
+  submitStoryButton: {
+    marginTop: 15,
+    backgroundColor: "#16A34A",
+    padding: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    shadowColor: "#16A34A",
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  submitStoryText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 14,
+  },
   logoutButton: {
     position: "absolute",
     bottom: 20,
